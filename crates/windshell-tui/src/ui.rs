@@ -6,7 +6,7 @@ use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Clear, Paragraph, Wrap},
@@ -54,15 +54,24 @@ fn selected_style() -> Style {
 fn panel(title: &str) -> Block<'_> {
     Block::bordered()
         .border_type(BorderType::Rounded)
+        .style(Style::default().bg(BASE).fg(TEXT))
         .border_style(Style::default().fg(SURFACE1))
         .title_style(Style::default().fg(OVERLAY1))
         .title(title)
 }
+
 /// Padded, focus-aware field/panel frame used by every form surface.
-fn field(title: &str, focused: bool) -> Block<'_> {
-    let block = panel(&format!(" {title} "));
+fn field(title: &'static str, focused: bool) -> Block<'static> {
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .style(Style::default().bg(BASE).fg(TEXT))
+        .border_style(Style::default().fg(SURFACE1))
+        .title_style(Style::default().fg(OVERLAY1))
+        .title(Line::from(format!(" {title} ")));
     if focused {
-        block.border_style(accent())
+        block
+            .border_style(accent())
+            .title_style(Style::default().fg(ACCENT).add_modifier(Modifier::BOLD))
     } else {
         block
     }
@@ -89,6 +98,50 @@ pub fn sidebar_width(width: u16) -> u16 {
         (width / 4).clamp(24, 34)
     }
 }
+
+fn modal_title(app: &App) -> &'static str {
+    match &app.mode {
+        Mode::Manage => " SSH · 连接管理 ",
+        Mode::Settings => " WindShell · 偏好设置 ",
+        Mode::Edit(form) => {
+            if form.index.is_some() {
+                " SSH · 编辑连接 "
+            } else {
+                " SSH · 新建连接 "
+            }
+        }
+        Mode::Auth { .. } => " SSH · 登录认证 ",
+        Mode::Transfer { upload: true, .. } => " SFTP · 上传文件 ",
+        Mode::Transfer { upload: false, .. } => " SFTP · 下载文件 ",
+        Mode::Delete { .. } => " SSH · 删除连接 ",
+        Mode::Browse => " WindShell ",
+    }
+}
+
+fn modal_height(app: &App) -> u16 {
+    match &app.mode {
+        Mode::Manage => 24,
+        Mode::Settings => 20,
+        Mode::Edit(form) => {
+            if form.count() >= 7 {
+                28
+            } else {
+                24
+            }
+        }
+        Mode::Auth { form, .. } => {
+            if form.method == Authentication::PrivateKey {
+                22
+            } else {
+                20
+            }
+        }
+        Mode::Transfer { .. } => 20,
+        Mode::Delete { .. } => 20,
+        Mode::Browse => 20,
+    }
+}
+
 fn color(c: vt100::Color, default: Color) -> Color {
     match c {
         vt100::Color::Default => default,
@@ -100,12 +153,13 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
     use crate::workspace::Content;
     let area = frame.area();
     frame.render_widget(
-        Block::default().style(Style::default().bg(Color::Black).fg(TEXT)),
+        Block::default().style(Style::default().bg(CRUST).fg(TEXT)),
         area,
     );
     if area.width < 48 || area.height < 18 {
         frame.render_widget(
-            Paragraph::new("WindShell · 请调整到至少 48×18\nAlt+Q 退出"),
+            Paragraph::new("WindShell · 请调整到至少 48×18\nAlt+Q 退出")
+                .style(Style::default().fg(TEXT).bg(CRUST)),
             area,
         );
         return vec![];
@@ -120,6 +174,10 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
         Rect::new(area.x, area.y, side.max(11), 1),
         Target::ToggleFiles,
     )];
+    frame.render_widget(
+        Block::default().style(Style::default().bg(MANTLE)),
+        Rect::new(area.x, area.y, area.width, 1),
+    );
     let body = Rect::new(
         area.x + side,
         area.y + 1,
@@ -127,7 +185,12 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
         area.height - 3,
     );
     frame.render_widget(
-        Paragraph::new(" WindShell").style(accent()),
+        Paragraph::new(" ◆ WindShell").style(
+            Style::default()
+                .fg(ACCENT)
+                .bg(MANTLE)
+                .add_modifier(Modifier::BOLD),
+        ),
         Rect::new(area.x, area.y, side.max(11), 1),
     );
     if w.sidebar {
@@ -135,25 +198,42 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
         frame.render_widget(
             Block::default()
                 .borders(ratatui::widgets::Borders::RIGHT)
-                .border_style(Style::default().fg(MUTED)),
+                .border_style(Style::default().fg(SURFACE1))
+                .style(Style::default().bg(MANTLE)),
             rect,
         );
         frame.render_widget(
             Paragraph::new(format!(
-                " {}",
+                "  ◇ {}",
                 w.root.file_name().unwrap_or_default().to_string_lossy()
             ))
-            .style(accent()),
+            .style(
+                Style::default()
+                    .fg(TEXT)
+                    .bg(MANTLE)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Rect::new(rect.x, rect.y, side - 1, 1),
         );
         frame.render_widget(
-            Paragraph::new(w.remote_status())
-                .style(Style::default().fg(MUTED))
+            Paragraph::new(format!("  {}", w.remote_status()))
+                .style(Style::default().fg(MUTED).bg(MANTLE))
                 .wrap(Wrap { trim: false }),
-            Rect::new(rect.x, rect.y + 1, side - 1, 2),
+            Rect::new(rect.x, rect.y + 1, side - 1, 1),
+        );
+        rule(
+            frame,
+            Rect::new(rect.x + 1, rect.y + 2, side.saturating_sub(2), 1),
+            SURFACE0,
         );
         let height = rect.height.saturating_sub(3) as usize;
         let offset = w.selected.saturating_add(1).saturating_sub(height);
+        if w.entries.is_empty() {
+            frame.render_widget(
+                Paragraph::new("  等待目录…").style(Style::default().fg(OVERLAY0).bg(MANTLE)),
+                Rect::new(rect.x, rect.y + 4, side - 1, 1),
+            );
+        }
         for (row, (i, entry)) in w
             .entries
             .iter()
@@ -164,7 +244,8 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
         {
             let r = Rect::new(rect.x, rect.y + 3 + row as u16, side - 1, 1);
             let label = format!(
-                " {}{} {}",
+                "{}{}{} {}",
+                if i == w.selected { "▌" } else { " " },
                 "  ".repeat(entry.depth),
                 if entry.directory {
                     if entry.expanded { "▾" } else { "▸" }
@@ -174,9 +255,13 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
                 entry.path.file_name().unwrap_or_default().to_string_lossy()
             );
             let style = if i == w.selected && w.files_focused {
-                Style::default().bg(Color::Rgb(49, 50, 68)).fg(ACCENT)
+                selected_style()
+            } else if i == w.selected {
+                Style::default().bg(SURFACE0).fg(SUBTEXT0)
             } else {
-                Style::default().fg(if entry.directory { ACCENT } else { TEXT })
+                Style::default()
+                    .bg(MANTLE)
+                    .fg(if entry.directory { ACCENT } else { SUBTEXT0 })
             };
             frame.render_widget(Paragraph::new(label).style(style), r);
             hits.push((r, Target::File(i)));
@@ -198,19 +283,22 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
     {
         let r = Rect::new(start + col as u16 * tab_width, area.y, tab_width, 1);
         let label = format!(
-            " {} {}",
+            "{} {}",
             if matches!(tab.content, Content::File { .. }) {
-                "·"
+                "▤"
             } else {
-                ">"
+                "›_"
             },
             tab.title
         );
         frame.render_widget(
             Paragraph::new(label).style(if i == w.active {
-                accent()
+                Style::default()
+                    .bg(SURFACE0)
+                    .fg(LAVENDER)
+                    .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(MUTED)
+                Style::default().bg(MANTLE).fg(MUTED)
             }),
             r,
         );
@@ -226,19 +314,84 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
     .enumerate()
     {
         let r = Rect::new(area.right() - controls + i as u16 * 3, area.y, 3, 1);
-        frame.render_widget(Paragraph::new(label).style(accent()), r);
+        let fg = match target {
+            Target::NewTerminal => GREEN,
+            Target::CloseTab => MUTED,
+            Target::Manage => ACCENT,
+            _ => PEACH,
+        };
+        frame.render_widget(
+            Paragraph::new(label).style(
+                Style::default()
+                    .fg(fg)
+                    .bg(SURFACE0)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            r,
+        );
         hits.push((r, target));
     }
     hits.push((body, Target::TerminalFocus));
     match w.tabs.get(w.active).map(|t| &t.content) {
-        Some(Content::Terminal(session)) => render_session(frame, body, session, matches!(app.mode, Mode::Browse) && !w.files_focused),
-        Some(Content::File {lines,scroll,..}) => {
-            let lines:Vec<Line>=lines.iter().enumerate().skip(*scroll as usize).take(body.height as usize).map(|(n,line)| {let mut line=line.clone();line.spans.insert(0,ratatui::text::Span::styled(format!("{:>4}  ",n+1),Style::default().fg(MUTED)));line}).collect();
-            frame.render_widget(Paragraph::new(lines),body);
+        Some(Content::Terminal(session)) => render_session(
+            frame,
+            body,
+            session,
+            matches!(app.mode, Mode::Browse) && !w.files_focused,
+        ),
+        Some(Content::File { lines, scroll, .. }) => {
+            let lines: Vec<Line> = lines
+                .iter()
+                .enumerate()
+                .skip(*scroll as usize)
+                .take(body.height as usize)
+                .map(|(n, line)| {
+                    let mut line = line.clone();
+                    line.spans.insert(
+                        0,
+                        ratatui::text::Span::styled(
+                            format!("{:>4}  ", n + 1),
+                            Style::default().fg(MUTED),
+                        ),
+                    );
+                    line
+                })
+                .collect();
+            frame.render_widget(
+                Paragraph::new(lines).style(Style::default().bg(CRUST).fg(TEXT)),
+                body,
+            );
         }
-        None => frame.render_widget(Paragraph::new("\n  WindShell\n\n  Alt+T  打开本地终端\n  Alt+S  连接 SSH\n  Alt+B  展开文件栏\n\n  从左侧打开文件，在这里预览。").style(Style::default().fg(MUTED)),body),
+        None => {
+            let card = centered(body, body.width.saturating_sub(8).min(64), 9);
+            frame.render_widget(
+                Paragraph::new(vec![
+                    Line::styled(
+                        "  ◇  READY",
+                        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                    ),
+                    Line::raw(""),
+                    Line::styled("  WindShell 工作区已就绪", Style::default().fg(TEXT)),
+                    Line::styled("", Style::default()),
+                    Line::styled("  Alt+T  打开本地终端", Style::default().fg(SUBTEXT0)),
+                    Line::styled("  Alt+S  连接 SSH", Style::default().fg(SUBTEXT0)),
+                    Line::styled(
+                        "  从文件栏打开文件，在这里只读预览",
+                        Style::default().fg(MUTED),
+                    ),
+                ])
+                .style(Style::default().bg(BASE)),
+                card,
+            );
+        }
     }
     let status = Rect::new(area.x, area.bottom() - 2, area.width, 1);
+    frame.render_widget(Block::default().style(Style::default().bg(MANTLE)), status);
+    let (mode, mode_color) = match w.tabs.get(w.active).map(|t| &t.content) {
+        Some(Content::File { .. }) => (" READ ", LAVENDER),
+        _ if w.files_focused => (" FILES", ACCENT),
+        _ => (" TERM ", GREEN),
+    };
     let location = match w.tabs.get(w.active).map(|t| &t.content) {
         Some(Content::File { path, .. }) => format!("只读  {}", path.display()),
         _ => format!(
@@ -247,10 +400,34 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
             w.root.display()
         ),
     };
+    let cells = Layout::horizontal([
+        Constraint::Length(7),
+        Constraint::Min(12),
+        Constraint::Length(12),
+    ])
+    .split(status);
     frame.render_widget(
-        Paragraph::new(format!(" {}", location))
-            .style(Style::default().bg(Color::Rgb(30, 30, 46)).fg(ACCENT)),
-        status,
+        Paragraph::new(mode).style(
+            Style::default()
+                .bg(SURFACE0)
+                .fg(mode_color)
+                .add_modifier(Modifier::BOLD),
+        ),
+        cells[0],
+    );
+    frame.render_widget(
+        Paragraph::new(format!(" {location}")).style(Style::default().bg(MANTLE).fg(SUBTEXT0)),
+        cells[1],
+    );
+    frame.render_widget(
+        Paragraph::new(format!(
+            " {}/{} tabs ",
+            w.active.saturating_add(1),
+            w.tabs.len()
+        ))
+        .alignment(Alignment::Right)
+        .style(dim_style().bg(MANTLE)),
+        cells[2],
     );
     let hint = if app.error {
         app.message.clone()
@@ -258,11 +435,7 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
         " Alt+B 文件栏  Alt+T 新终端  Alt+←/→ 标签  Alt+S SSH  Alt+, 设置  Alt+Q 退出".into()
     };
     frame.render_widget(
-        Paragraph::new(hint).style(Style::default().fg(if app.error {
-            Color::Rgb(243, 139, 168)
-        } else {
-            MUTED
-        })),
+        Paragraph::new(hint).style(Style::default().fg(if app.error { RED } else { MUTED })),
         Rect::new(area.x, area.bottom() - 1, area.width, 1),
     );
     if !matches!(app.mode, Mode::Browse) {
@@ -270,21 +443,26 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
             frame.render_widget(Clear, area);
             return draw_panel(frame, app);
         }
-        // Render existing form widgets into a bounded surface, then translate its
-        // cursor and hit targets. No background target can receive modal clicks.
+        // Render the modal in an isolated terminal, then copy its buffer and
+        // translate hit targets. Background targets cannot receive modal clicks.
         let rect = centered(
             area,
             (area.width.saturating_sub(6)).min(110),
-            (area.height.saturating_sub(4)).max(18),
+            modal_height(app).min(area.height.saturating_sub(4)).max(20),
         );
         frame.render_widget(Clear, rect);
+        let shell = panel(modal_title(app))
+            .style(Style::default().bg(BASE).fg(TEXT))
+            .border_style(Style::default().fg(SURFACE1))
+            .title_style(Style::default().fg(LAVENDER).add_modifier(Modifier::BOLD));
+        let inner = shell.inner(rect);
+        frame.render_widget(shell, rect);
         frame.render_widget(
-            panel(" WindShell  ·  SSH / 设置                         Esc 关闭 ")
-                .style(Style::default().bg(Color::Black).fg(TEXT))
-                .border_style(Style::default().fg(MUTED)),
-            rect,
+            Paragraph::new(" Esc 关闭 ")
+                .alignment(Alignment::Right)
+                .style(Style::default().fg(OVERLAY0).bg(BASE)),
+            Rect::new(rect.x + 1, rect.y, rect.width.saturating_sub(3), 1),
         );
-        let inner = panel("").inner(rect);
         let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(
             inner.width,
             inner.height,
@@ -294,7 +472,7 @@ pub fn draw(frame: &mut Frame, app: &App) -> Targets {
         let rendered = terminal
             .draw(|f| {
                 f.render_widget(
-                    Block::default().style(Style::default().bg(Color::Black).fg(TEXT)),
+                    Block::default().style(Style::default().bg(BASE).fg(TEXT)),
                     f.area(),
                 );
                 inner_hits = draw_panel(f, app);
@@ -379,6 +557,7 @@ fn draw_panel(frame: &mut Frame, app: &App) -> Targets {
     if area.width < 48 || area.height < 18 {
         frame.render_widget(
             Paragraph::new("WindShell\n请调整到至少 48 列 × 18 行\nEsc 返回 · Ctrl+C 退出")
+                .style(Style::default().fg(TEXT).bg(BASE))
                 .wrap(Wrap { trim: false }),
             area,
         );
@@ -390,28 +569,75 @@ fn draw_panel(frame: &mut Frame, app: &App) -> Targets {
             heading(frame, "设置", "工作区偏好 · 本次运行生效");
             let rows = [
                 (
-                    format!(
-                        "[{}] 文件栏   B",
-                        if app.workspace.sidebar { "开" } else { "关" }
-                    ),
+                    "文件栏",
+                    Some(app.workspace.sidebar),
+                    "B",
                     Target::ToggleFiles,
                 ),
                 (
-                    format!(
-                        "[{}] 显示隐藏文件   H",
-                        if app.workspace.hidden { "开" } else { "关" }
-                    ),
+                    "显示隐藏文件",
+                    Some(app.workspace.hidden),
+                    "H",
                     Target::ToggleHidden,
                 ),
-                ("SSH 连接管理   S".into(), Target::Manage),
-                ("刷新文件栏 R".into(), Target::Refresh),
+                ("SSH 连接管理", None, "S", Target::Manage),
+                ("刷新远端文件", None, "R", Target::Refresh),
             ];
-            for (i, (label, target)) in rows.into_iter().enumerate() {
+            for (i, (label, enabled, key, target)) in rows.into_iter().enumerate() {
                 let r = Rect::new(area.x + 2, area.y + 4 + i as u16 * 2, area.width - 4, 1);
-                frame.render_widget(Paragraph::new(label).style(accent()), r);
+                let value = match enabled {
+                    Some(true) => Span::styled(
+                        " ON  ",
+                        Style::default()
+                            .bg(SURFACE0)
+                            .fg(GREEN)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Some(false) => {
+                        Span::styled(" OFF ", Style::default().bg(SURFACE0).fg(OVERLAY0))
+                    }
+                    None => Span::styled("  ›  ", Style::default().fg(ACCENT)),
+                };
+                frame.render_widget(
+                    Paragraph::new(Line::from(vec![
+                        Span::styled("  ", Style::default()),
+                        value,
+                        Span::styled(
+                            format!("  {label}"),
+                            Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(format!("    {key}"), dim_style()),
+                    ]))
+                    .style(Style::default().bg(BASE)),
+                    r,
+                );
                 hits.push((r, target));
             }
-            frame.render_widget(Paragraph::new("Alt+B 文件栏 · Alt+T 新终端 · Alt+W 关闭标签\nAlt+←/→ 切换标签 · Alt+S SSH · Alt+, 设置\nAlt+Q 退出 · Esc 关闭面板\n\n远端文件：只读 UTF-8 高亮预览，最大 1 MiB\n终端：Ctrl+C、Tab、Esc 均传递给当前会话").wrap(Wrap {trim:false}),Rect::new(area.x+2,area.y+11,area.width-4,area.height.saturating_sub(12)));
+            rule(
+                frame,
+                Rect::new(area.x + 2, area.y + 12, area.width.saturating_sub(4), 1),
+                SURFACE0,
+            );
+            frame.render_widget(
+                Paragraph::new(vec![
+                    Line::styled("  快捷键", Style::default().fg(SUBTEXT0)),
+                    Line::styled(
+                        "  Alt+B 文件栏 · Alt+T 新终端 · Alt+W 关闭标签",
+                        dim_style(),
+                    ),
+                    Line::styled(
+                        "  远端文件只读预览，最大 1 MiB；快捷键均可在面板外使用",
+                        dim_style(),
+                    ),
+                ])
+                .style(Style::default().bg(BASE)),
+                Rect::new(
+                    area.x + 2,
+                    area.y + 13,
+                    area.width.saturating_sub(4),
+                    area.height.saturating_sub(14),
+                ),
+            );
         }
         Mode::Edit(form) => {
             heading(
@@ -479,12 +705,12 @@ fn draw_panel(frame: &mut Frame, app: &App) -> Targets {
                         let text = format!("  {}   ← / → 切换", form.method.label());
                         frame.render_widget(
                             Paragraph::new(text)
-                                .style(if selected { accent() } else { Style::default() })
-                                .block(panel(" 登录方式 ").border_style(if selected {
+                                .style(if selected {
                                     accent()
                                 } else {
-                                    Style::default()
-                                })),
+                                    Style::default().fg(SUBTEXT0)
+                                })
+                                .block(field("登录方式", selected)),
                             rect,
                         );
                         hits.push((rect, Target::AuthCycle));
@@ -531,6 +757,7 @@ fn draw_panel(frame: &mut Frame, app: &App) -> Targets {
                 } else {
                     "输入 SSH 登录密码。关闭 WindShell 后，下次连接会重新询问。"
                 })
+                .style(Style::default().fg(SUBTEXT0).bg(BASE))
                 .wrap(Wrap { trim: false }),
                 hint,
             );
@@ -580,6 +807,7 @@ fn draw_panel(frame: &mut Frame, app: &App) -> Targets {
             }
             frame.render_widget(
                 Paragraph::new("目标已存在时会覆盖。暂不支持目录递归、通配符或 ~ 前缀。")
+                    .style(dim_style().bg(BASE))
                     .wrap(Wrap { trim: false }),
                 Rect::new(body.x, body.y + 7, body.width, 2),
             );
@@ -597,14 +825,20 @@ fn draw_panel(frame: &mut Frame, app: &App) -> Targets {
         hits.clear();
         let rect = centered(area, 64, 10);
         frame.render_widget(Clear, rect);
-        frame.render_widget(panel(" 删除连接 "), rect);
+        frame.render_widget(
+            panel(" 删除连接 ")
+                .border_style(Style::default().fg(RED))
+                .title_style(Style::default().fg(RED).add_modifier(Modifier::BOLD)),
+            rect,
+        );
         frame.render_widget(
             Paragraph::new(format!(
-                "删除「{}」？\n只删除本地连接配置，远端文件不受影响。",
+                "  删除「{}」？\n\n  只删除本地连接配置，远端文件不受影响。",
                 app.store.hosts[app.selected].name
             ))
+            .style(Style::default().fg(TEXT).bg(BASE))
             .wrap(Wrap { trim: false }),
-            Rect::new(rect.x + 2, rect.y + 2, rect.width - 4, 3),
+            Rect::new(rect.x + 2, rect.y + 2, rect.width - 4, 4),
         );
         buttons(
             frame,
@@ -629,8 +863,8 @@ fn heading(frame: &mut Frame, title: &str, subtitle: &str) {
     let area = frame.area();
     frame.render_widget(
         Paragraph::new(vec![
-            Line::styled(format!("  WindShell / {title}"), accent()),
-            Line::raw(format!("  {subtitle}")),
+            Line::styled(format!("  {title}"), accent()),
+            Line::styled(format!("  {subtitle}"), muted()),
         ]),
         Rect::new(area.x, area.y, area.width, 2),
     );
@@ -638,11 +872,11 @@ fn heading(frame: &mut Frame, title: &str, subtitle: &str) {
 fn footer(frame: &mut Frame, app: &App, labels: &[&str], focus: Option<usize>, hits: &mut Targets) {
     let area = frame.area();
     frame.render_widget(
-        Paragraph::new(&*app.message)
+        Paragraph::new(format!("  {}", app.message))
             .style(if app.error {
-                Style::default().fg(Color::Red)
+                Style::default().fg(RED).bg(BASE)
             } else {
-                Style::default()
+                Style::default().fg(SUBTEXT0).bg(BASE)
             })
             .wrap(Wrap { trim: false }),
         Rect::new(area.x + 2, area.bottom() - 6, area.width - 4, 2),
@@ -674,17 +908,25 @@ fn buttons(
     for (i, label) in labels.iter().enumerate() {
         let focused = focus == Some(i);
         let style = if focused {
-            accent().add_modifier(Modifier::REVERSED)
-        } else if i == 0 {
-            accent()
-        } else {
             Style::default()
+                .bg(ACCENT)
+                .fg(CRUST)
+                .add_modifier(Modifier::BOLD)
+        } else if i == 0 {
+            Style::default()
+                .bg(SURFACE0)
+                .fg(ACCENT)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().bg(BASE).fg(SUBTEXT0)
         };
+        let block = panel(if focused { " Enter " } else { "" }).border_style(if focused {
+            Style::default().fg(ACCENT)
+        } else {
+            Style::default().fg(SURFACE1)
+        });
         frame.render_widget(
-            Paragraph::new(*label)
-                .centered()
-                .style(style)
-                .block(panel(if focused { " Enter " } else { "" })),
+            Paragraph::new(*label).centered().style(style).block(block),
             cells[i],
         );
         hits.push((cells[i], Target::Button(i)));
@@ -708,15 +950,41 @@ fn browse(frame: &mut Frame, app: &App, hits: &mut Targets) {
     .into_iter()
     .enumerate()
     {
-        frame.render_widget(Paragraph::new(label).style(accent()), cells[i]);
+        frame.render_widget(
+            Paragraph::new(label).style(
+                Style::default()
+                    .bg(if i == 2 { SURFACE0 } else { BASE })
+                    .fg(if i == 2 { GREEN } else { ACCENT })
+                    .add_modifier(Modifier::BOLD),
+            ),
+            cells[i],
+        );
         hits.push((cells[i], target));
     }
     let height = area.height.saturating_sub(12) as usize;
     let offset = app.selected.saturating_add(1).saturating_sub(height);
     if app.store.hosts.is_empty() {
+        let empty = Rect::new(
+            4,
+            6,
+            area.width.saturating_sub(8),
+            height.saturating_sub(2) as u16,
+        );
         frame.render_widget(
-            Paragraph::new("还没有连接\n\n按 N 添加 SSH，支持密码、私钥和 SSH Agent。"),
-            Rect::new(2, 5, area.width - 4, height as u16),
+            Paragraph::new(vec![
+                Line::styled(
+                    "  ◇  还没有 SSH 连接",
+                    Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
+                ),
+                Line::raw(""),
+                Line::styled(
+                    "  按 N 新建连接，或从 ~/.ssh/config 选择已有 Host",
+                    Style::default().fg(SUBTEXT0),
+                ),
+                Line::styled("  Agent、密码和粘贴私钥都由系统 OpenSSH 处理", dim_style()),
+            ])
+            .block(panel(" 起点 ")),
+            empty,
         );
     }
     for (row, (i, host)) in app
@@ -729,36 +997,53 @@ fn browse(frame: &mut Frame, app: &App, hits: &mut Targets) {
         .enumerate()
     {
         let rect = Rect::new(2, 5 + row as u16, area.width - 4, 1);
+        let selected = i == app.selected;
+        let endpoint = format!(
+            "{}{}{}",
+            host.user,
+            if host.user.is_empty() { "" } else { "@" },
+            host.address
+        );
         frame.render_widget(
-            Paragraph::new(format!(
-                "{} {:<18}  {}{}{}  ·  {}",
-                if i == app.selected { ">" } else { " " },
-                host.name,
-                host.user,
-                if host.user.is_empty() { "" } else { "@" },
-                host.address,
-                host.authentication.label()
-            ))
-            .style(if i == app.selected {
-                accent().bg(Color::Rgb(49, 50, 68))
+            Paragraph::new(Line::from(vec![
+                Span::styled(
+                    if selected { "▌ " } else { "  " },
+                    if selected { accent() } else { dim_style() },
+                ),
+                Span::styled(
+                    pad(&host.name, 18),
+                    if selected {
+                        Style::default().fg(LAVENDER).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(TEXT)
+                    },
+                ),
+                Span::styled(format!("  {endpoint}"), Style::default().fg(SUBTEXT0)),
+                Span::styled(format!("  ·  {}", host.authentication.label()), dim_style()),
+            ]))
+            .style(if selected {
+                Style::default().bg(SURFACE0)
             } else {
-                Style::default()
+                Style::default().bg(BASE)
             }),
             rect,
         );
         hits.push((rect, Target::Host(i)));
     }
     if let Some(host) = app.store.hosts.get(app.selected) {
+        let detail = Rect::new(2, area.height.saturating_sub(7), area.width - 4, 3);
         frame.render_widget(
             Paragraph::new(format!(
-                "连接详情 · {} · 端口 {}",
+                "  {}  {}:{}",
+                host.name,
                 host.address,
                 host.port
                     .map(|p| p.to_string())
-                    .unwrap_or_else(|| "SSH 默认".into())
+                    .unwrap_or_else(|| "22".into())
             ))
-            .style(Style::default().fg(MUTED)),
-            Rect::new(2, area.height - 6, area.width - 4, 1),
+            .style(Style::default().fg(SUBTEXT0))
+            .block(panel(" 当前连接 ")),
+            detail,
         );
     }
     let actions = [
@@ -774,16 +1059,23 @@ fn browse(frame: &mut Frame, app: &App, hits: &mut Targets) {
         1,
     ));
     for (i, (label, target)) in actions.into_iter().enumerate() {
-        frame.render_widget(Paragraph::new(label).style(accent()), cells[i]);
+        frame.render_widget(
+            Paragraph::new(label).style(Style::default().bg(BASE).fg(if i == 1 {
+                RED
+            } else {
+                ACCENT
+            })),
+            cells[i],
+        );
         hits.push((cells[i], target));
     }
     frame.render_widget(
-        Paragraph::new(app.message.as_str()).style(Style::default().fg(if app.error {
-            Color::Red
-        } else {
-            MUTED
-        })),
-        Rect::new(2, area.height - 2, area.width - 4, 1),
+        Paragraph::new(format!("  {}", app.message)).style(
+            Style::default()
+                .bg(BASE)
+                .fg(if app.error { RED } else { MUTED }),
+        ),
+        Rect::new(2, area.height.saturating_sub(2), area.width - 4, 1),
     );
 }
 
@@ -798,13 +1090,9 @@ fn credential(frame: &mut Frame, rect: Rect, form: &CredentialForm, index: usize
             )
         };
         frame.render_widget(
-            Paragraph::new(text).block(
-                panel(" 私钥内容（直接粘贴，不填路径） ").border_style(if focused {
-                    accent()
-                } else {
-                    Style::default()
-                }),
-            ),
+            Paragraph::new(text)
+                .style(dim_style())
+                .block(field("私钥内容（直接粘贴，不填路径）", focused)),
             rect,
         );
     } else {
@@ -819,13 +1107,13 @@ fn credential(frame: &mut Frame, rect: Rect, form: &CredentialForm, index: usize
 fn input(
     frame: &mut Frame,
     rect: Rect,
-    label: &str,
+    label: &'static str,
     input: &Input,
     hint: &str,
     focused: bool,
     hidden: bool,
 ) {
-    let block = panel(label).border_style(if focused { accent() } else { Style::default() });
+    let block = field(label, focused);
     let inner = block.inner(rect);
     let text = if input.text.is_empty() {
         hint.to_string()
@@ -850,9 +1138,9 @@ fn input(
         Paragraph::new(text)
             .scroll((0, offset as u16))
             .style(if input.text.is_empty() {
-                Style::default().add_modifier(Modifier::DIM)
+                dim_style()
             } else {
-                Style::default()
+                Style::default().fg(TEXT)
             })
             .block(block),
         rect,
@@ -900,7 +1188,11 @@ pub fn prompt(
             terminal.draw(|f| {
                 let a = f.area();
                 if a.width < 48 || a.height < 18 {
-                    f.render_widget(Paragraph::new("请调整到 48×18 以上；Esc 取消认证"), a);
+                    f.render_widget(
+                        Paragraph::new("请调整到 48×18 以上；Esc 取消认证")
+                            .style(Style::default().fg(TEXT).bg(CRUST)),
+                        a,
+                    );
                     return;
                 }
                 heading(
@@ -916,9 +1208,12 @@ pub fn prompt(
                 let height = bottom.saturating_sub(a.y + 4 + if prompt.confirm { 0 } else { 3 });
                 f.render_widget(
                     Paragraph::new(text.as_str())
+                        .style(Style::default().fg(TEXT).bg(BASE))
                         .wrap(Wrap { trim: false })
                         .scroll((scroll, 0))
-                        .block(panel(" OpenSSH 请求 ")),
+                        .block(panel(" OpenSSH 请求 ").title_style(
+                            Style::default().fg(LAVENDER).add_modifier(Modifier::BOLD),
+                        )),
                     Rect::new(a.x + 2, a.y + 3, a.width - 4, height),
                 );
                 if !prompt.confirm {
@@ -940,6 +1235,7 @@ pub fn prompt(
                     } else {
                         "输入内容不会显示，也不会写入连接配置。"
                     })
+                    .style(Style::default().fg(SUBTEXT0).bg(BASE))
                     .wrap(Wrap { trim: false }),
                     Rect::new(a.x + 2, bottom, a.width - 4, 2),
                 );
@@ -959,7 +1255,8 @@ pub fn prompt(
                     &mut hits,
                 );
                 f.render_widget(
-                    Paragraph::new(" Tab 切换 · Enter 确认 · PageUp/PageDown 查看请求 · Esc 取消"),
+                    Paragraph::new(" Tab 切换 · Enter 确认 · PageUp/PageDown 查看请求 · Esc 取消")
+                        .style(dim_style().bg(CRUST)),
                     Rect::new(a.x + 1, a.bottom() - 1, a.width - 2, 1),
                 );
             })?;
@@ -1067,6 +1364,55 @@ mod tests {
             if width >= 48 {
                 assert!(text.replace(' ', "").contains("私钥口令"));
                 assert!(text.replace(' ', "").contains("保存并连接"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn management_and_settings_keep_sections_and_hits_visible() -> Result<()> {
+        let host = Host {
+            name: "开发服务器".into(),
+            address: "dev".into(),
+            user: "deploy".into(),
+            ..Default::default()
+        };
+        let mut app = App::new(HostStore { hosts: vec![host] }, "unused".into());
+
+        for (mode, expected) in [
+            (Target::Manage, &["开发服务器", "当前连接", "编辑 E"][..]),
+            (Target::Settings, &["设置", "显示隐藏文件", "快捷键"][..]),
+        ] {
+            app.click(mode);
+            for (width, height) in [(120, 36), (60, 24), (48, 18)] {
+                let mut terminal = Terminal::new(TestBackend::new(width, height))?;
+                let mut hits = Vec::new();
+                terminal.draw(|f| hits = draw(f, &app))?;
+                let text: String = terminal
+                    .backend()
+                    .buffer()
+                    .content
+                    .iter()
+                    .map(|c| c.symbol())
+                    .collect();
+                for needle in expected {
+                    assert!(
+                        text.replace(' ', "").contains(&needle.replace(' ', "")),
+                        "missing {needle:?} at {width}x{height}:\n{text}"
+                    );
+                }
+                assert!(
+                    hits.iter().all(|(rect, _)| {
+                        rect.x < width
+                            && rect.y < height
+                            && rect.right() <= width
+                            && rect.bottom() <= height
+                    }),
+                    "modal hit target escaped {width}x{height}: {:?}",
+                    hits.iter()
+                        .map(|(rect, _)| (rect.x, rect.y, rect.right(), rect.bottom()))
+                        .collect::<Vec<_>>()
+                );
             }
         }
         Ok(())

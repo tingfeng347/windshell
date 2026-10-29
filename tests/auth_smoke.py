@@ -263,7 +263,7 @@ def main():
             wait_for("会话已结束")
             key("M-w")
             key("M-s")
-            wait_for("连接详情")
+            wait_for("当前连接")
             assert not list(keytmp.iterdir()), "temporary key not cleaned up"
 
         def transfer(upload, local, remote):
@@ -278,8 +278,8 @@ def main():
         try:
             start()
             key("M-s")
-            wait_for("还没有连接")
-            click(6, 6)  # the visible New Connection button
+            wait_for("还没有 SSH 连接")
+            click(6, 7)  # the visible New Connection button
             wait_for("新建连接")
             literal("密码测试")
             key("Tab")
@@ -348,7 +348,7 @@ def main():
             time.sleep(.2)
             start()
             key("M-s")
-            wait_for("连接详情")
+            wait_for("当前连接")
             key("Enter")
             wait_for("登录认证")
             paste_key()

@@ -117,7 +117,7 @@ Host slow
             command = shlex.join([str(binary), "--config", str(d / "hosts.toml"), "--ssh-config", str(d / "ssh_config")])
             tmux("new-session", "-d", "-s", "test", "-x", "100", "-y", "30", command)
             key("M-s")
-            wait_for("还没有连接")
+            wait_for("还没有 SSH 连接")
             key("n")
             literal("本机测试")
             key("Tab")
