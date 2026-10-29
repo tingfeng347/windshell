@@ -8,23 +8,78 @@ use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, BorderType, Clear, Paragraph, Wrap},
 };
 use windshell_core::{Authentication, Prompt};
 use zeroize::Zeroizing;
 
 pub type Targets = Vec<(Rect, Target)>;
-const ACCENT: Color = Color::Rgb(137, 180, 250);
+
+// Catppuccin Mocha. Every surface below is picked from this small, fixed set so
+// the chrome (top bar / sidebar / status) reads as one palette instead of ad
+// hoc RGB values.
+const CRUST: Color = Color::Rgb(17, 17, 27);
+const MANTLE: Color = Color::Rgb(24, 24, 37);
+const BASE: Color = Color::Rgb(30, 30, 46);
+const SURFACE0: Color = Color::Rgb(49, 50, 68);
+const SURFACE1: Color = Color::Rgb(69, 71, 90);
+const OVERLAY0: Color = Color::Rgb(108, 112, 134);
+const OVERLAY1: Color = Color::Rgb(147, 153, 178);
+const SUBTEXT0: Color = Color::Rgb(166, 173, 200);
 const TEXT: Color = Color::Rgb(205, 214, 244);
-const MUTED: Color = Color::Rgb(147, 153, 178);
+const ACCENT: Color = Color::Rgb(137, 180, 250);
+const LAVENDER: Color = Color::Rgb(180, 190, 254);
+const GREEN: Color = Color::Rgb(166, 227, 161);
+const RED: Color = Color::Rgb(243, 139, 168);
+const PEACH: Color = Color::Rgb(250, 179, 135);
+
+const MUTED: Color = OVERLAY1;
+
 fn accent() -> Style {
     Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
+}
+fn muted() -> Style {
+    Style::default().fg(OVERLAY1)
+}
+fn dim_style() -> Style {
+    Style::default().fg(OVERLAY0)
+}
+fn selected_style() -> Style {
+    Style::default()
+        .bg(SURFACE0)
+        .fg(LAVENDER)
+        .add_modifier(Modifier::BOLD)
 }
 fn panel(title: &str) -> Block<'_> {
     Block::bordered()
         .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(SURFACE1))
+        .title_style(Style::default().fg(OVERLAY1))
         .title(title)
+}
+/// Padded, focus-aware field/panel frame used by every form surface.
+fn field(title: &str, focused: bool) -> Block<'_> {
+    let block = panel(&format!(" {title} "));
+    if focused {
+        block.border_style(accent())
+    } else {
+        block
+    }
+}
+/// Display width aware padding: CJK names keep the columns aligned.
+fn pad(text: &str, width: usize) -> String {
+    let used = Line::raw(text).width();
+    if used >= width {
+        text.to_string()
+    } else {
+        format!("{text}{}", " ".repeat(width - used))
+    }
+}
+/// Section rule drawn as a one-cell surface band (no box-drawing glyphs, so it
+/// stays a single column in CJK-wide terminals too).
+fn rule(frame: &mut Frame, rect: Rect, color: Color) {
+    frame.render_widget(Block::default().style(Style::default().bg(color)), rect);
 }
 
 pub fn sidebar_width(width: u16) -> u16 {
