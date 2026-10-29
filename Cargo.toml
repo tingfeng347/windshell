@@ -1,0 +1,14 @@
+[workspace]
+members = ["crates/windshell-core", "crates/windshell-tui"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+tempfile = "3"
