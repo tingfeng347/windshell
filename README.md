@@ -29,7 +29,7 @@ WindShell 是一个用 Rust 编写的终端 SSH 工作区：左侧展开**当前
 - **文件传输**：在 SSH 面板中按 U / G 上传或下载，路径按原文处理，进度由前台 OpenSSH 显示。
 - **为小终端设计**：48×18 起可用，表单随焦点滚动，鼠标点击与键盘操作等价。
 
-![WindShell 远端工作区：左侧文件树，右侧高亮预览](docs/screenshots/workspace.png)
+![WindShell 远端工作区：左侧文件树，右侧高亮预览](docs/screenshots/workspace-v2.png)
 
 截图来自真实本地 sshd + SFTP 会话，未拼接界面。
 
@@ -45,9 +45,9 @@ WindShell 是一个用 Rust 编写的终端 SSH 工作区：左侧展开**当前
 
 `Tab` 切换字段，登录方式上用 `←` / `→` 或空格切换。使用终端的粘贴菜单/快捷键（通常 `Ctrl+Shift+V`）粘贴多行私钥，终端需支持 bracketed paste；`F2` 显隐密码或口令。
 
-![SSH 连接管理面板](docs/screenshots/manager.png)
+![SSH 连接管理面板](docs/screenshots/manager-v2.png)
 
-![新建连接与密码认证](docs/screenshots/connect.png)
+![新建连接与密码认证](docs/screenshots/connect-v2.png)
 
 「保存并连接」或 `F5` 开始连接，「保存」或 `F10` 只写配置。也可以先不填凭据，等连接时再输入。**密码、粘贴私钥和口令只保留在本次运行中，重启后重新输入。**
 
@@ -119,7 +119,7 @@ windshell --config ./hosts.toml --check
 
 支持鼠标点击主机、字段、认证方式和操作按钮。文件栏中 `Backspace` 返回上级目录，`R` 刷新。设置面板可切换文件栏和隐藏文件，本次运行有效。
 
-![设置面板](docs/screenshots/settings.png)
+![设置面板](docs/screenshots/settings-v2.png)
 
 ## 文件与传输
 
