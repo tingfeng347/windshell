@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">WindShell</title>
+  <desc id="desc">A terminal prompt drawn with flowing wind strokes on a dark rounded tile.</desc>
+  <defs>
+    <linearGradient id="wind" gradientUnits="userSpaceOnUse" x1="60" y1="0" x2="200" y2="0">
+      <stop offset="0" stop-color="#67e8d0"/>
+      <stop offset="0.33" stop-color="#74b9f5"/>
+      <stop offset="0.67" stop-color="#b59cf8"/>
+      <stop offset="1" stop-color="#f1a8d8"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#1e1e2e"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M42 74h92c28 0 28-32 4-32" stroke="#7099ce" stroke-width="9"/>
+    <path d="M42 104h124c30 0 30 36 4 36h-26" stroke="#a18bc7" stroke-width="9" opacity="0.85"/>
+    <path d="M76 146l30 26-30 26" stroke="url(#wind)" stroke-width="16"/>
+    <path d="M126 198h52" stroke="url(#wind)" stroke-width="16"/>
+  </g>
+</svg>
