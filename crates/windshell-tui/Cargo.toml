@@ -1,0 +1,22 @@
+[package]
+name = "windshell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+windshell-core = { path = "../windshell-core" }
+anyhow.workspace = true
+ratatui = "0.30"
+crossterm = "0.29"
+directories = "6"
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3"
+zeroize = "1"
+portable-pty = "0.9.0"
+vt100 = "0.18.1"
+syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
+tempfile.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
