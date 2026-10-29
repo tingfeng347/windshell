@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-10-28T11:20:42+08:00	design-retrospective	采用 Rust workspace 与系统 OpenSSH	尽早交付真实 SSH，核心可被未来 GUI 复用；不自研模拟器	spec/06-modules/mvp/spec.md	accepted by implementation, pending user acceptance
+2026-10-28T11:20:42+08:00	validation-retrospective	终端中断保留父进程；恢复时复用 Terminal	Ctrl+C 应取消传输而不是退出管理器；避免重复 panic hook	crates/windshell-tui/src/app.rs; .audit/ssh-smoke.log	tests green
+2026-10-28T11:20:42+08:00	delivery	Linux MVP 验证完成，跨平台 CI 待运行	区分真实联调与跨平台目标	.audit/tests.log; .audit/clippy.log; .audit/ssh-smoke.log	Linux tests green; other platforms INCONCLUSIVE
+2026-10-28T14:17:17+08:00	auth-ux	采用 TUI 认证表单与 askpass 请求回调；凭据不进入连接配置	支持密码和完整私钥粘贴，保留真实终端兼容性	spec/06-modules/auth/spec.md; .audit/ux-auth/auth-smoke.log	Linux tests green
+2026-10-28T14:17:17+08:00	auth-validation	统一 CR/LF/CRLF 多行粘贴；测试服务端完整关闭 SFTP 子系统	真实终端粘贴及独立 scp 最小复现提供因果证据	crates/windshell-tui/src/input.rs; tests/auth_smoke.py; .audit/ux-auth/tests.log	tests green
